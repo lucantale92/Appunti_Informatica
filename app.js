@@ -24,7 +24,7 @@ function sampleExercise(title, desc){
 #app{font-family:sans-serif; padding:1rem}
 button{padding:.4rem .8rem}`,
     js:`// JS
-document.getElementById('go').addEventListener('click', ()=>alert('Ciao Luca!'))`
+document.getElementById('go').addEventListener('click', ()=>console.log('Ciao Luca!'))`
   };
 }
 
@@ -36,17 +36,16 @@ const defaultData = {
   ]
 };
 
-/* ------------------------------ BACKUP SU FILE (Punto 3) ------------------------------ */
-/*  Usa la File System Access API per scrivere un file JSON locale ad ogni salvataggio.
-    L'handle del file viene memorizzato in IndexedDB (solo l'handle, non i dati!).
-    Funziona al meglio su Chrome/Edge desktop. Su altri browser semplicemente non parte,
-    ma l'app continua ad usare localStorage come sempre. */
+/* ------------------------------ BACKUP SU FILE ------------------------------ */
+/*  File System Access API + IndexedDB
+    - Memorizziamo SOLO l'handle in IndexedDB, non i dati.
+    - Alla PRIMA selezione file: leggiamo e (se vuoi) importiamo. NON scriviamo mai.
+    - Dopo modifiche: save() farà localStorage + (debounced) write su file. */
 
 const IDB_NAME = 'playground_backup_handle_v1';
 const IDB_STORE = 'kv';
 const IDB_BACKUP_HANDLE_KEY = 'backupHandle';
 
-// Mini IndexedDB per conservare l'handle del file
 function idbOpen() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(IDB_NAME, 1);
@@ -78,7 +77,6 @@ function idbSet(key, val) {
   }));
 }
 
-// UI helper per mostrare mini stato (se #fsStatus esiste)
 function setFSStatus(msg) {
   const el = document.getElementById('fsStatus');
   if (!el) return;
@@ -86,8 +84,6 @@ function setFSStatus(msg) {
   clearTimeout(setFSStatus._t);
   setFSStatus._t = setTimeout(()=>{ el.textContent = ''; }, 2000);
 }
-
-// Mostra il nome del backup se #backupName è presente
 function setBackupName(name) {
   const el = document.getElementById('backupName');
   if (!el) return;
@@ -98,31 +94,15 @@ async function refreshBackupLabel() {
   setBackupName(h ? h.name : null);
 }
 
-// Scegli un file già esistente o creane uno nuovo
 async function setBackupFileHandle() {
   if (!window.showSaveFilePicker) throw new Error('File System Access API non supportata su questo browser');
-
-  let handle;
-  const scelta = confirm("Vuoi creare un nuovo file di backup? (OK = nuovo, Annulla = apri esistente)");
-  
-  if (scelta) {
-    handle = await window.showSaveFilePicker({
-      suggestedName: 'playground-luca-backup.json',
-      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
-    });
-  } else {
-    [handle] = await window.showOpenFilePicker({
-      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
-      multiple: false
-    });
-  }
-
+  const handle = await window.showSaveFilePicker({
+    suggestedName: 'playground-luca-backup.json',
+    types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+  });
   await idbSet(IDB_BACKUP_HANDLE_KEY, handle);
   return handle;
 }
-
-
-// Recupera handle e permessi
 async function getBackupFileHandle() {
   try {
     const h = await idbGet(IDB_BACKUP_HANDLE_KEY);
@@ -133,8 +113,6 @@ async function getBackupFileHandle() {
     return req === 'granted' ? h : null;
   } catch { return null; }
 }
-
-// Scrivi JSON sul file (se handle disponibile)
 async function writeBackupFile(jsonText) {
   const handle = await getBackupFileHandle();
   if (!handle) return false;
@@ -143,8 +121,7 @@ async function writeBackupFile(jsonText) {
   await w.close();
   return true;
 }
-
-// Leggi JSON dal file di backup (se handle disponibile)
+// ✅ nuova: lettura dal file (per import iniziale)
 async function readBackupFile(){
   const handle = await getBackupFileHandle();
   if (!handle) return null;
@@ -157,8 +134,6 @@ async function readBackupFile(){
   }
 }
 
-
-// Debounce per non martellare il disco
 const writeBackupDebounced = debounce(async () => {
   try {
     const ok = await writeBackupFile(JSON.stringify(db));
@@ -168,7 +143,8 @@ const writeBackupDebounced = debounce(async () => {
     setFSStatus('⚠️ Errore backup');
   }
 }, 400);
-/* -------------------------------------------------------------------------------------- */
+
+/* -------------------------------------------------------------------------- */
 
 function load(){
   try{
@@ -221,6 +197,7 @@ function catCard(cat){
       <span class="tag">${cat.exercises.length} esercizi${subCount?` · ${subCount} sottocat.`:''}</span>
       <div style="display:flex;gap:6px">
         <button class="btn" data-go="${cat.id}">Apri</button>
+        <button class="btn" data-rename="${cat.id}">Rinomina</button>
         <button class="btn btn-danger" data-del="${cat.id}">Elimina</button>
       </div>
     </div>
@@ -231,6 +208,22 @@ function catCard(cat){
     const id=cat.id; 
     location.hash=`#cat/${id}`; 
     showCategory(id); 
+  });
+
+  // Rinomina
+  el.querySelector('[data-rename]').addEventListener('click', ()=>{
+    const c = getCategory(cat.id);
+    if (!c) return;
+    const newTitle = prompt('Nuovo nome categoria:', c.title);
+    if (!newTitle) return;
+    c.title = newTitle.trim();
+    c.slug = slugify(c.title);
+    save();
+    if ($('#view-category').classList.contains('active') && currentCategoryId){
+      showCategory(currentCategoryId);
+    } else {
+      showHome();
+    }
   });
 
   // Elimina (nota: rimuove solo cat corrente e i figli di primo livello)
@@ -250,12 +243,9 @@ function showCategory(catId){ const cat=getCategory(catId); if(!cat){ location.h
   const subs=getChildren(cat.id), subGrid=$('#subCatsGrid'); if(subGrid){ subGrid.innerHTML=''; subs.forEach(sc=>subGrid.appendChild(catCard(sc))); $('#subCatsBlock').style.display=subs.length?'block':'none'; }
   renderExercises(cat); refreshAllEditorsSoon(); }
 
-  // Rende qualsiasi elemento "osservato": quando cambia dimensione, facciamo refresh di tutti i CodeMirror
+// ResizeObserver già pronto se ti serve osservare contenitori dinamici
 const ro = new ResizeObserver(() => refreshAllEditorsSoon());
-function observeResize(el){
-  if (!el) return;
-  ro.observe(el);
-}
+function observeResize(el){ if (!el) return; ro.observe(el); }
 
 function refreshCatMeta(cat){ $('#catMeta').textContent = `${cat.exercises.length} esercizio/i · ${cat.description||''}`; }
 function renderExercises(cat){ const q=$('#searchInput').value.trim(); const list=$('#exerciseList'); list.innerHTML=''; const items=(cat.exercises||[]).filter(ex=>matchesQueryExercise(ex,q));
@@ -320,14 +310,18 @@ function exerciseCard(catId, ex, index){
       </div>
     </div>
     <div class="output">
-      <div class="bar"><span>Anteprima</span><span class="muted">Sandbox</span></div>
+      <div class="bar"><span>Anteprima</span><span class="muted">Console</span></div>
       <iframe id="${iframeId}" sandbox="allow-scripts allow-same-origin"></iframe>
+      <div>  Console</div>
+      <pre class="console" id="${iframeId}-console"></pre>
     </div>`;
 
   const $html=wrap.querySelector('#'+htmlId);
   const $css =wrap.querySelector('#'+cssId);
   const $js  =wrap.querySelector('#'+jsId);
   const $frame=wrap.querySelector('#'+iframeId);
+  const $console = wrap.querySelector('#' + iframeId + '-console');
+
   const autoChk = wrap.querySelector('[data-auto]');
   const titleEl = wrap.querySelector('[data-bind="title"]');
   const descEl  = wrap.querySelector('[data-bind="description"]');
@@ -337,6 +331,32 @@ function exerciseCard(catId, ex, index){
   const edJS  =makeEditor($js, 'javascript');
 
   setTimeout(()=>{ edHTML.refresh(); edCSS.refresh(); edJS.refresh(); }, 0);
+
+  function clearConsole(){ if ($console) $console.textContent = ''; }
+  function appendConsole(level, parts){
+    if (!$console) return;
+    const line = document.createElement('div');
+    const tag  = document.createElement('span');
+    tag.className = 'muted';
+    tag.textContent = '[' + (level || 'log').toUpperCase() + '] ';
+    line.appendChild(tag);
+    const msg = document.createElement('span');
+    if (level === 'warn')  msg.className = 'warn';
+    if (level === 'error') msg.className = 'error';
+    msg.textContent = (parts || []).join(' ');
+    line.appendChild(msg);
+    $console.appendChild(line);
+    $console.scrollTop = $console.scrollHeight;
+  }
+
+  // Ascolta i messaggi provenienti dall'iframe specifico di questa card
+  const onMsg = (e)=>{
+    if (e.source !== $frame.contentWindow) return;
+    const d = e.data || {};
+    if (!d.__pgLog) return;
+    appendConsole(d.level || 'log', d.parts || []);
+  };
+  window.addEventListener('message', onMsg);
 
   // Aggiorna l'oggetto "ex" nel DB con i valori correnti dell'UI
   function updateRefFromUI(){
@@ -351,12 +371,12 @@ function exerciseCard(catId, ex, index){
   }
 
   function runNow(){
-    // prima di eseguire, aggiorniamo il model (così il salvataggio cattura ciò che vedi)
     updateRefFromUI();
+    clearConsole();
     const html=edHTML.getValue();
     const css =edCSS.getValue();
     const js  =edJS.getValue();
-    try{ new Function(js); }catch(e){ return; }
+    try{ new Function(js); }catch(e){ appendConsole('error',[e.message||String(e)]); return; }
     runToIFrame($frame, html, css, js);
   }
 
@@ -374,12 +394,11 @@ function exerciseCard(catId, ex, index){
   wrap.querySelector('[data-run]').addEventListener('click', runNow);
   wrap.querySelector('[data-window]').addEventListener('click', ()=>{
     updateRefFromUI();
-    const js = edJS.getValue(); try{ new Function(js); }catch(e){ return; }
+    const js = edJS.getValue(); try{ new Function(js); }catch(e){ appendConsole('error',[e.message||String(e)]); return; }
     openInWindow(edHTML.getValue(), edCSS.getValue(), js);
   });
   wrap.querySelector('[data-save]').addEventListener('click', ()=>{
-    updateRefFromUI();
-    save(); runNow();
+    updateRefFromUI(); save(); runNow();
   });
   wrap.querySelector('[data-delete]').addEventListener('click', ()=>{
     if(!confirm('Eliminare questo esercizio?')) return;
@@ -407,9 +426,44 @@ function buildHTMLDoc(html, css, js){
   <style>#__err{position:fixed;left:16px;right:16px;bottom:16px;background:#2b0f12;color:#ffd9de;border:1px solid #5a1b21;padding:10px 12px;border-radius:10px;font:12px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap;z-index:9999}</style>
   <script>(function(){function s(m,t){var b=document.getElementById('__err');if(!b){b=document.createElement('pre');b.id='__err';document.body.appendChild(b);}b.textContent=String(m)+(t?'\\n'+t:'');}window.addEventListener('error',function(e){s(e.message,e.error&&e.error.stack);});window.addEventListener('unhandledrejection',function(e){var r=e.reason||{};s(r.message||String(r),r.stack);});})();<\/script>`;
   const safeJS = `try{${js}}catch(e){if(window.__showError)window.__showError(e.message,e.stack);else console.error(e);}`;
+
+  // Hook console.* → postMessage al parent (per la console sotto l’anteprima)
+  const consoleHook = `
+  <script>
+  (function(){
+    function toText(x){
+      try{
+        if (typeof x === 'string') return x;
+        if (x === null || x === undefined) return String(x);
+        if (x instanceof Error) return x.message;
+        const s = JSON.stringify(x);
+        return s === undefined ? String(x) : s;
+      }catch(e){ return String(x); }
+    }
+    function send(level, args){
+      try { parent && parent.postMessage({ __pgLog: true, level, parts: Array.from(args).map(toText) }, '*'); } catch(e){}
+    }
+    ['log','info','warn','error'].forEach(function(fn){
+      const orig = console[fn];
+      console[fn] = function(){
+        send(fn, arguments);
+        try{ orig && orig.apply(console, arguments); }catch(e){}
+      };
+    });
+    window.addEventListener('error', function(e){
+      send('error', [e.message || String(e.error || 'Error')]);
+    });
+    window.addEventListener('unhandledrejection', function(e){
+      var r = e.reason;
+      send('error', [ (r && (r.message || r.toString())) || 'Unhandled rejection' ]);
+    });
+  })();
+  <\/script>`;
+
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body>
 ${html}
 ${errBox}
+${consoleHook}
 <script>${safeJS}<\/script>
 </body></html>`;
 }
@@ -440,7 +494,6 @@ $('#btnNewExercise').addEventListener('click', ()=>{
   if(!currentCategoryId) return; const cat=getCategory(currentCategoryId); if(!cat) return;
   const title=prompt('Titolo esercizio:')||'Nuovo esercizio';
   const description=prompt('Descrizione breve:')||'';
-  // 👉 Aggiungi in cima
   cat.exercises.unshift({id:uid(), title, description, html:'', css:'', js:''});
   save(); refreshCatMeta(cat); renderExercises(cat);
 });
@@ -457,7 +510,7 @@ $('#btnImportCat').addEventListener('click', async ()=>{
     imported.id=uid(); imported.parentId=currentCategoryId||null;
     imported.slug=imported.slug?imported.slug+'-import':'import-'+uid();
     imported.exercises=(imported.exercises||[]).map(e=>({id:e.id||uid(),...e}));
-    db.categories.unshift(imported); // mostra subito in alto tra le categorie del livello corrente
+    db.categories.unshift(imported);
     save(); location.hash=`#cat/${imported.id}`; showCategory(imported.id);
   }catch(e){ alert('JSON non valido'); }
 });
@@ -478,40 +531,32 @@ let refreshTimer=null;
 function refreshAllEditorsSoon(){ clearTimeout(refreshTimer); refreshTimer=setTimeout(()=>{ $$('.CodeMirror').forEach(w=>{ if(w.__cm){ try{ w.__cm.refresh(); }catch(e){} } }); }, 60); }
 window.addEventListener('resize', refreshAllEditorsSoon);
 
+// Navigazione iniziale
 navigate(location.hash || '#home'); showHome(); refreshAllEditorsSoon();
 
 /* --------------------------- Wiring pulsanti backup --------------------------- */
-// Questi handler sono opzionali: se non metti i pulsanti in HTML, non succede nulla.
 document.getElementById('btnSetBackup')?.addEventListener('click', async ()=>{
   try{
-    // Puoi lasciare la tua setBackupFileHandle attuale (crea/“salva come”).
-    // Se vuoi anche selezionare un file esistente, puoi combinarla con showOpenFilePicker (vedi messaggio precedente).
     const handle = await setBackupFileHandle();
-
     setFSStatus('📁 Backup impostato');
-    await refreshBackupLabel(); // mostra il nome del file scelto
+    await refreshBackupLabel();
 
     // 1) Prima LETTURA, mai scrittura al primo giro
     let importedText = null;
     try {
       const file = await handle.getFile();
       importedText = await file.text();
-    } catch(e) {
-      importedText = null; // file appena creato o non leggibile
-    }
+    } catch(e) { importedText = null; }
 
-    // 2) Se il file ha contenuto, proponi l'import SENZA scrivere nulla
+    // 2) Se il file contiene dati, proponi l'import (SOLO localStorage)
     if (importedText && importedText.trim()) {
-      const wantsImport = confirm(
-        'Trovato un database nel file selezionato.\nVuoi IMPORTARLO sostituendo i dati locali attuali?'
-      );
+      const wantsImport = confirm('Trovato un database nel file selezionato.\nVuoi IMPORTARLO sostituendo i dati locali attuali?');
       if (wantsImport) {
         try{
           const imported = JSON.parse(importedText);
           if (imported && Array.isArray(imported.categories)) {
             db = imported;
-            // Importa SOLO in localStorage: nessuna scrittura sul file adesso.
-            localStorage.setItem(STORE_KEY, JSON.stringify(db));
+            localStorage.setItem(STORE_KEY, JSON.stringify(db)); // nessuna scrittura su file ora
             navigate('#home'); showHome();
             setFSStatus('✅ Dati importati dal backup');
           } else {
@@ -522,23 +567,30 @@ document.getElementById('btnSetBackup')?.addEventListener('click', async ()=>{
         }
       }
     } else {
-      // File vuoto/nuovo: non scriviamo niente ora; aspettiamo le tue modifiche
       setFSStatus('ℹ️ File vuoto: verrà scritto solo dopo le prossime modifiche/salvataggi');
     }
-
-    // ✅ Da qui in avanti, eventuali modifiche che farai attiveranno save()
-    // che salva su localStorage e, debounced, scrive sul file. 
-
   }catch(e){
     console.error(e);
     alert('Impossibile impostare il file di backup.\nSuggerito: Chrome/Edge su desktop.');
   }
 });
 
-
-// All’avvio, se l’handle è già autorizzato, mostra stato pronto + nome
+// All’avvio, mostra stato e prova (opzionale) import automatico se locale vuoto
 (async ()=>{
   const h = await getBackupFileHandle();
   setFSStatus(h ? '📁 Backup pronto' : 'ℹ️ Backup non impostato');
   setBackupName(h ? h.name : null);
+
+  if (h && !localStorage.getItem(STORE_KEY)) {
+    try{
+      const t = await (await h.getFile()).text();
+      const imported = JSON.parse(t);
+      if (imported && Array.isArray(imported.categories)) {
+        db = imported;
+        localStorage.setItem(STORE_KEY, JSON.stringify(db));
+        navigate('#home'); showHome();
+        setFSStatus('✅ Dati caricati dal backup (nessuna scrittura)');
+      }
+    }catch(e){ /* ignora */ }
+  }
 })();

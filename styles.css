@@ -93,3 +93,23 @@ a{color:inherit;text-decoration:none}
 .output .console .warn  { color: #ffd666; }
 .output .console .error { color: #ff8a8a; }
 
+
+html, body { height: 100%; }
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* la parte centrale cresce e spinge il footer in basso */
+.wrap { flex: 1; }
+
+/* stile footer */
+footer{
+  margin-top: auto;                 /* chiave! resta in fondo */
+  background: #141826;
+  color: #e7e9ee;
+  border-top: 1px solid rgba(255,255,255,.08);
+  text-align: center;
+  padding: 14px 18px;
+}

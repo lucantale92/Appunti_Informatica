@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Playground JS – Luca</title>
+  <link rel="stylesheet" href="styles.css">
+
+<!-- CodeMirror core -->
+<link rel="stylesheet" href="lib/codemirror.css">
+<link rel="stylesheet" href="lib/theme/material.css">
+<script src="lib/codemirror.js"></script>
+
+<!-- Addon per autocomplete e chiusura automatica -->
+<link rel="stylesheet" href="lib/addon/hint/show-hint.css">
+<script src="lib/addon/hint/show-hint.js"></script>
+<script src="lib/addon/hint/javascript-hint.js"></script>
+<script src="lib/addon/hint/css-hint.js"></script>
+<script src="lib/addon/hint/xml-hint.js"></script>
+<script src="lib/addon/hint/html-hint.js"></script>
+<script src="lib/addon/edit/closetag.js"></script>
+<script src="lib/addon/edit/closebrackets.js"></script>
+
+<!-- Modes -->
+<script src="lib/mode/xml/xml.js"></script>
+<script src="lib/mode/javascript/javascript.js"></script>
+<script src="lib/mode/css/css.js"></script>
+<script src="lib/mode/htmlmixed/htmlmixed.js"></script>
+
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo">JS</div>
+        <div class="brand-title">Playground – Esercizi</div>
+      </div>
+      <div class="search">
+        <input id="searchInput" type="search" placeholder="Cerca categoria, sottocategoria o esercizio…" />
+        <button class="btn" id="btnNewCat" title="Crea nuova categoria">+ Categoria</button>
+      </div>
+
+  <div class="controls">
+    <button class="btn" id="btnSetBackup" title="Scegli file backup JSON">Imposta backup</button>
+    <button class="btn" id="btnSaveNow" title="Scrivi subito sul file">Salva ora</button>
+    <span class="muted" id="backupName" style="margin-left:8px">(nessun backup)</span>
+    <span class="muted" id="fsStatus" style="margin-left:8px"></span>
+  </div>
+
+
+      <button class="btn" id="btnHome">Home</button>
+    </div>
+
+    <section id="view-home" class="view active">
+      <h2 style="margin:18px 4px 10px">Macrocategorie</h2>
+      <div id="homeGrid" class="grid"></div>
+      <div id="homeEmpty" class="empty" style="display:none">Nessuna categoria trovata.</div>
+    </section>
+
+    <section id="view-category" class="view">
+      <div class="cat-head">
+        <div>
+          <div id="breadcrumb" class="muted" style="margin-bottom:6px"></div>
+          <h2 id="catTitle" style="margin:0 0 4px"></h2>
+          <div class="cat-meta" id="catMeta"></div>
+        </div>
+        <div class="controls">
+          <button class="btn" id="btnNewSubCat">+ Sottocategoria</button>
+          <button class="btn" id="btnNewExercise">+ Esercizio</button>
+          <button class="btn" id="btnExportCat" title="Esporta JSON">Esporta</button>
+          <button class="btn" id="btnImportCat" title="Importa JSON">Importa</button>
+        </div>
+      </div>
+      <div id="subCatsBlock" style="display:none">
+        <h3 style="margin:12px 0 8px; font-size:18px">Sottocategorie</h3>
+        <div id="subCatsGrid" class="grid"></div>
+      </div>
+      <div id="exerciseList"></div>
+      <div id="catEmpty" class="empty" style="display:none">Ancora nessun esercizio. Aggiungine uno con “+ Esercizio”.</div>
+    </section>
+  </div>
+
+  <script defer src="app.js"></script>
+</body>
+</html>

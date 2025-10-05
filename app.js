@@ -98,16 +98,29 @@ async function refreshBackupLabel() {
   setBackupName(h ? h.name : null);
 }
 
-// Scegli file e memorizza handle
+// Scegli un file già esistente o creane uno nuovo
 async function setBackupFileHandle() {
   if (!window.showSaveFilePicker) throw new Error('File System Access API non supportata su questo browser');
-  const handle = await window.showSaveFilePicker({
-    suggestedName: 'playground-luca-backup.json',
-    types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
-  });
+
+  let handle;
+  const scelta = confirm("Vuoi creare un nuovo file di backup? (OK = nuovo, Annulla = apri esistente)");
+  
+  if (scelta) {
+    handle = await window.showSaveFilePicker({
+      suggestedName: 'playground-luca-backup.json',
+      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+    });
+  } else {
+    [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
+      multiple: false
+    });
+  }
+
   await idbSet(IDB_BACKUP_HANDLE_KEY, handle);
   return handle;
 }
+
 
 // Recupera handle e permessi
 async function getBackupFileHandle() {

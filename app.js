@@ -144,6 +144,20 @@ async function writeBackupFile(jsonText) {
   return true;
 }
 
+// Leggi JSON dal file di backup (se handle disponibile)
+async function readBackupFile(){
+  const handle = await getBackupFileHandle();
+  if (!handle) return null;
+  try {
+    const file = await handle.getFile();
+    return await file.text();
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+}
+
+
 // Debounce per non martellare il disco
 const writeBackupDebounced = debounce(async () => {
   try {
@@ -470,27 +484,57 @@ navigate(location.hash || '#home'); showHome(); refreshAllEditorsSoon();
 // Questi handler sono opzionali: se non metti i pulsanti in HTML, non succede nulla.
 document.getElementById('btnSetBackup')?.addEventListener('click', async ()=>{
   try{
-    await setBackupFileHandle();
+    // Puoi lasciare la tua setBackupFileHandle attuale (crea/“salva come”).
+    // Se vuoi anche selezionare un file esistente, puoi combinarla con showOpenFilePicker (vedi messaggio precedente).
+    const handle = await setBackupFileHandle();
+
     setFSStatus('📁 Backup impostato');
-    await refreshBackupLabel();                                    // mostra nome file fisso
-    // scrivi subito uno snapshot corrente
-    await writeBackupFile(JSON.stringify(db));
-    setFSStatus('✅ Backup scritto');
+    await refreshBackupLabel(); // mostra il nome del file scelto
+
+    // 1) Prima LETTURA, mai scrittura al primo giro
+    let importedText = null;
+    try {
+      const file = await handle.getFile();
+      importedText = await file.text();
+    } catch(e) {
+      importedText = null; // file appena creato o non leggibile
+    }
+
+    // 2) Se il file ha contenuto, proponi l'import SENZA scrivere nulla
+    if (importedText && importedText.trim()) {
+      const wantsImport = confirm(
+        'Trovato un database nel file selezionato.\nVuoi IMPORTARLO sostituendo i dati locali attuali?'
+      );
+      if (wantsImport) {
+        try{
+          const imported = JSON.parse(importedText);
+          if (imported && Array.isArray(imported.categories)) {
+            db = imported;
+            // Importa SOLO in localStorage: nessuna scrittura sul file adesso.
+            localStorage.setItem(STORE_KEY, JSON.stringify(db));
+            navigate('#home'); showHome();
+            setFSStatus('✅ Dati importati dal backup');
+          } else {
+            alert('Il file selezionato non contiene un database valido.');
+          }
+        }catch(e){
+          alert('Il file selezionato non è un JSON valido.');
+        }
+      }
+    } else {
+      // File vuoto/nuovo: non scriviamo niente ora; aspettiamo le tue modifiche
+      setFSStatus('ℹ️ File vuoto: verrà scritto solo dopo le prossime modifiche/salvataggi');
+    }
+
+    // ✅ Da qui in avanti, eventuali modifiche che farai attiveranno save()
+    // che salva su localStorage e, debounced, scrive sul file. 
+
   }catch(e){
     console.error(e);
     alert('Impossibile impostare il file di backup.\nSuggerito: Chrome/Edge su desktop.');
   }
 });
 
-document.getElementById('btnSaveNow')?.addEventListener('click', async ()=>{
-  try{
-    const ok = await writeBackupFile(JSON.stringify(db));
-    setFSStatus(ok ? '✅ Backup scritto' : 'ℹ️ Backup non impostato');
-  }catch(e){
-    console.error(e);
-    setFSStatus('⚠️ Errore backup');
-  }
-});
 
 // All’avvio, se l’handle è già autorizzato, mostra stato pronto + nome
 (async ()=>{

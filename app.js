@@ -198,6 +198,7 @@ function catCard(cat){
       <div style="display:flex;gap:6px">
         <button class="btn" data-go="${cat.id}">Apri</button>
         <button class="btn" data-rename="${cat.id}">Rinomina</button>
+        <button class="btn" data-editdesc="${cat.id}"> Modifica descrizione</button>
         <button class="btn btn-danger" data-del="${cat.id}">Elimina</button>
       </div>
     </div>
@@ -225,6 +226,23 @@ function catCard(cat){
       showHome();
     }
   });
+
+  // Cambia descrizione
+el.querySelector('[data-editdesc]').addEventListener('click', ()=>{
+  const c = getCategory(cat.id);
+  if (!c) return;
+  const newDesc = prompt('Nuova descrizione:', c.description || '');
+  if (newDesc === null) return;      // annulla → non fare nulla
+  c.description = newDesc.trim();
+  save();
+
+  // Se sto guardando la categoria aperta, rinfresca quella; altrimenti ricarica la home
+  if ($('#view-category').classList.contains('active') && currentCategoryId){
+    showCategory(currentCategoryId);
+  } else {
+    showHome();
+  }
+});
 
   // Elimina (nota: rimuove solo cat corrente e i figli di primo livello)
   el.querySelector('[data-del]').addEventListener('click', ()=>{
